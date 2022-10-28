@@ -71,6 +71,22 @@ void setup() {
     5,
     NULL
   );
+  xTaskCreate(
+    keepWifiAwakeTask,
+    "Wifi connection management",
+    2048,
+    NULL,
+    10,
+    NULL
+  );
+  xTaskCreate(
+    updateWebpageTask,
+    "Server management",
+    2048,
+    NULL,
+    7,
+    NULL
+  );
 }
 
 void loop() {} //in FreeRTOS, usually the loop is left empty
@@ -133,6 +149,7 @@ void updateLCDTask(void* parameters) {
   }
 }
 
+//Wifi connection/reconnection, check top level constants for wifi name and password!
 void keepWifiAwakeTask(void* parameters) {
   while (1) {
     if (WiFi.status() != WL_CONNECTED) {
@@ -151,46 +168,47 @@ void keepWifiAwakeTask(void* parameters) {
       vTaskDelay(500 / portTICK_PERIOD_MS); //sleep task for 500ms
     }
   }
+}
 
-  void updateWebpageTask(void* parameters) {
-    while (1) {
-      while (WiFi.status() != WL_CONNECTED) {
-        //yield and hope that the wifi task will be back on
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-      }
-      WiFiClient client = server.available();
-      if (client) {
-        while (client.connected()) {
-          if (client.available()) {             // if there's bytes to read from the client,
-            char c = client.read();
-            if (c == '\n') {                    // if the byte is a newline character
+void updateWebpageTask(void* parameters) {
+  while (1) {
+    while (WiFi.status() != WL_CONNECTED) {
+      //yield and hope that the wifi task will be back on
+      vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
+    WiFiClient client = server.available();
+    if (client) {
+      while (client.connected()) {
+        if (client.available()) {             // if there's bytes to read from the client,
+          char c = client.read();
+          if (c == '\n') {                    // if the byte is a newline character
 
-              // if two newline characters in a row
-              // that's the end of the client HTTP request, so send a response:
-              c = client.read();
-              if (c == '\n') {
-                char measurementFormatBuffer[128];
-                // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-                // and a content-type so the client knows what's coming, then a blank line:
-                client.println("HTTP/1.1 200 OK");
-                client.println("Content-type:text/html");
-                client.println();
-                //print current temperature with <br> html tag as newline/linebreak
-                sprintf(measurementFormatBuffer, "Temperature: %d°C. <br>", Vtemp);
-                client.print(measurementFormatBuffer);
-                //print current water level
-                sprintf(measurementFormatBuffer, "Water level: %d°C. <br>", Vwaterlvl);
-                client.print(measurementFormatBuffer);
-                // The HTTP response ends with another blank line:
-                client.println();
-                // break out of the while loop:
-                break;
-              }
+            // if two newline characters in a row
+            // that's the end of the client HTTP request, so send a response:
+            c = client.read();
+            if (c == '\n') {
+              char measurementFormatBuffer[128];
+              // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+              // and a content-type so the client knows what's coming, then a blank line:
+              client.println("HTTP/1.1 200 OK");
+              client.println("Content-type:text/html");
+              client.println();
+              //print current temperature with <br> html tag as newline/linebreak
+              sprintf(measurementFormatBuffer, "Temperature: %d°C. <br>", Vtemp);
+              client.print(measurementFormatBuffer);
+              //print current water level
+              sprintf(measurementFormatBuffer, "Water level: %d°C. <br>", Vwaterlvl);
+              client.print(measurementFormatBuffer);
+              // The HTTP response ends with another blank line:
+              client.println();
+              // break out of the while loop:
+              break;
             }
           }
         }
-        client.stop();
       }
-      vTaskDelay(500 / portTICK_PERIOD_MS); //sleep task for 500ms
+      client.stop();
     }
+    vTaskDelay(500 / portTICK_PERIOD_MS); //sleep task for 500ms
   }
+}
